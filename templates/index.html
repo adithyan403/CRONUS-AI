@@ -1,0 +1,332 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Cronus AI</title>
+    <link rel="preconnect" href="https://fonts.googleapis.com">
+    <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+    <link href="https://fonts.googleapis.com/css2?family=Orbitron:wght@400..900&display=swap" rel="stylesheet">
+    <script src="https://cdnjs.cloudflare.com/ajax/libs/three.js/r128/three.min.js"></script>
+    <script src="https://cdn.tailwindcss.com"></script>
+    <style>
+        body {
+            background-color: #0c0a1d;
+            font-family: 'Orbitron', sans-serif;
+            overflow: hidden;
+            color: #00f6ff;
+            margin: 0;
+        }
+
+        #background-canvas {
+            position: fixed;
+            top: 0;
+            left: 0;
+            width: 100%;
+            height: 100%;
+            z-index: 0;
+        }
+
+        #ai-container {
+            position: relative;
+            z-index: 1;
+            display: flex;
+            flex-direction: column;
+            justify-content: center;
+            align-items: center;
+            height: 100vh;
+            text-align: center;
+        }
+
+        #ai-title {
+            font-size: 4rem;
+            letter-spacing: 0.5rem;
+            font-weight: 700;
+            text-shadow: 0 0 10px #00f6ff, 0 0 20px #00f6ff, 0 0 40px #00f6ff;
+            margin-bottom: 2rem;
+        }
+        
+        #face-container {
+            width: 350px;
+            height: 350px;
+            position: relative;
+            display: flex;
+            justify-content: center;
+            align-items: center;
+        }
+        
+        /* --- SVG Face and Animations --- */
+        #ai-face {
+            width: 100%;
+            height: 100%;
+        }
+
+        .face-outline { stroke: #00f6ff; stroke-width: 2; fill: none; }
+        .face-glow { stroke: #00f6ff; stroke-width: 1; fill: none; opacity: 0.5; }
+        .eye-pupil { fill: #00f6ff; }
+        .mouth { stroke: #00f6ff; stroke-width: 2; fill: none; }
+
+        /* Listening Animation */
+        #ai-container.listening .eye-pupil {
+            animation: look-around 4s infinite ease-in-out;
+        }
+        @keyframes look-around {
+            0%, 100% { transform: translate(0, 0); }
+            25% { transform: translate(-3px, 2px); }
+            50% { transform: translate(0, -2px); }
+            75% { transform: translate(3px, 2px); }
+        }
+
+        /* Speaking Animation */
+        #ai-container.speaking .mouth {
+            animation: talk 0.4s infinite alternate;
+        }
+        @keyframes talk {
+            0% { d: path('M 120 180 Q 150 185 180 180'); }
+            50% { d: path('M 120 180 Q 150 195 180 180'); }
+            100% { d: path('M 120 180 Q 150 205 180 180'); }
+        }
+        #ai-container.speaking #left-eye, #ai-container.speaking #right-eye {
+            animation: blink 5s infinite;
+        }
+        @keyframes blink {
+            0%, 95%, 100% { transform: scaleY(1); }
+            97.5% { transform: scaleY(0.1); }
+        }
+
+        /* --- Buttons --- */
+        .controls {
+            margin-top: 2rem;
+            display: flex;
+            gap: 2rem;
+        }
+        .ai-button {
+            width: 150px;
+            height: 60px;
+            color: white;
+            border: 2px solid;
+            font-size: 1.5rem;
+            letter-spacing: 0.2rem;
+            display: flex;
+            justify-content: center;
+            align-items: center;
+            gap: 0.8rem;
+            cursor: pointer;
+            transition: all 0.3s ease;
+            clip-path: polygon(25% 0%, 75% 0%, 100% 50%, 75% 100%, 25% 100%, 0% 50%);
+        }
+        #talk-btn {
+            border-color: #ff5722;
+            background: rgba(255, 87, 34, 0.1);
+            box-shadow: 0 0 15px rgba(255, 87, 34, 0.5), inset 0 0 10px rgba(255, 87, 34, 0.3);
+        }
+        #talk-btn:hover {
+            background: rgba(255, 87, 34, 0.3);
+            box-shadow: 0 0 25px rgba(255, 87, 34, 0.8), inset 0 0 15px rgba(255, 87, 34, 0.5);
+        }
+        #stop-btn {
+            border-color: #00f6ff;
+            background: rgba(0, 246, 255, 0.1);
+            box-shadow: 0 0 15px rgba(0, 246, 255, 0.5), inset 0 0 10px rgba(0, 246, 255, 0.3);
+        }
+        #stop-btn:hover {
+            background: rgba(0, 246, 255, 0.3);
+            box-shadow: 0 0 25px rgba(0, 246, 255, 0.8), inset 0 0 15px rgba(0, 246, 255, 0.5);
+        }
+
+        /* Status text for transcripts and responses */
+        #status-text {
+            position: absolute;
+            bottom: 20px;
+            font-size: 1rem;
+            opacity: 0.7;
+            transition: opacity 0.3s ease;
+        }
+
+    </style>
+</head>
+<body>
+
+    <canvas id="background-canvas"></canvas>
+
+    <div id="ai-container">
+        <h1 id="ai-title">CRONUS</h1>
+
+        <div id="face-container">
+            <!-- Animated SVG Face -->
+            <svg id="ai-face" viewBox="0 0 300 300">
+                <!-- Head Outline -->
+                <path class="face-outline" d="M 75 250 Q 40 150 75 50 Q 150 20 225 50 Q 260 150 225 250 Q 150 280 75 250 Z" />
+                <!-- Internal Lines / Glow -->
+                <path class="face-glow" d="M 150 20 V 280 M 40 150 H 260" />
+                <path class="face-glow" d="M 75 50 L 225 250 M 75 250 L 225 50" />
+                
+                <!-- Eyes -->
+                <g id="left-eye" transform-origin="110px 120px">
+                    <ellipse class="face-outline" cx="110" cy="120" rx="25" ry="15"/>
+                    <circle class="eye-pupil" cx="110" cy="120" r="8"/>
+                </g>
+                 <g id="right-eye" transform-origin="190px 120px">
+                    <ellipse class="face-outline" cx="190" cy="120" rx="25" ry="15"/>
+                    <circle class="eye-pupil" cx="190" cy="120" r="8"/>
+                </g>
+                
+                <!-- Mouth -->
+                <path class="mouth" id="mouth" d="M 120 180 Q 150 185 180 180" />
+            </svg>
+        </div>
+
+        <div class="controls">
+            <div id="talk-btn" class="ai-button">TALK</div>
+            <div id="stop-btn" class="ai-button">STOP</div>
+        </div>
+        
+        <p id="status-text">Click TALK to begin</p>
+
+    </div>
+
+    <script>
+        // --- Particle Background Script ---
+        let scene, camera, renderer, particles;
+        const backgroundCanvas = document.getElementById('background-canvas');
+
+        function initBackground() {
+            scene = new THREE.Scene();
+            camera = new THREE.PerspectiveCamera(75, window.innerWidth / window.innerHeight, 0.1, 1000);
+            camera.position.z = 5;
+            renderer = new THREE.WebGLRenderer({ canvas: backgroundCanvas, alpha: true });
+            renderer.setSize(window.innerWidth, window.innerHeight);
+
+            const particleGeometry = new THREE.BufferGeometry();
+            const particleCount = 2000;
+            const posArray = new Float32Array(particleCount * 3);
+            for(let i = 0; i < particleCount * 3; i++) {
+                posArray[i] = (Math.random() - 0.5) * 12; 
+            }
+            particleGeometry.setAttribute('position', new THREE.BufferAttribute(posArray, 3));
+            
+            const particleMaterial = new THREE.PointsMaterial({
+                size: 0.015,
+                color: 0x00f6ff // Match the UI color
+            });
+            particles = new THREE.Points(particleGeometry, particleMaterial);
+            scene.add(particles);
+        }
+
+        const clock = new THREE.Clock();
+        function animateBackground() {
+            const elapsedTime = clock.getElapsedTime();
+            particles.rotation.y = -0.1 * elapsedTime;
+            renderer.render(scene, camera);
+            requestAnimationFrame(animateBackground);
+        }
+
+        window.addEventListener('resize', () => {
+            camera.aspect = window.innerWidth / window.innerHeight;
+            camera.updateProjectionMatrix();
+            renderer.setSize(window.innerWidth, window.innerHeight);
+        });
+        
+        // Initialize and start the background animation
+        initBackground();
+        animateBackground();
+
+
+        // --- AI Logic Script ---
+        const SpeechRecognition = window.SpeechRecognition || window.webkitSpeechRecognition;
+        const recognition = SpeechRecognition ? new SpeechRecognition() : null;
+        
+        const aiContainer = document.getElementById('ai-container');
+        const talkBtn = document.getElementById('talk-btn');
+        const stopBtn = document.getElementById('stop-btn');
+        const statusText = document.getElementById('status-text');
+
+        async function sendToServer(userInput) {
+            try {
+                const response = await fetch('http://127.0.0.1:5000/ask', {
+                    method: 'POST',
+                    headers: { 'Content-Type': 'application/json' },
+                    body: JSON.stringify({ message: userInput }),
+                });
+                const data = await response.json();
+                return data.response;
+            } catch (error) {
+                console.error('Error:', error);
+                return 'Sorry, there was a connection error.';
+            }
+        }
+
+        function speak(text) {
+            speechSynthesis.cancel();
+            const utterance = new SpeechSynthesisUtterance(text);
+            utterance.onstart = () => {
+                aiContainer.classList.remove('listening');
+                aiContainer.classList.add('speaking');
+                statusText.textContent = "Cronus is speaking...";
+            };
+            utterance.onend = () => {
+                aiContainer.classList.remove('speaking');
+                statusText.textContent = "Click TALK to respond";
+            };
+            speechSynthesis.speak(utterance);
+        }
+
+        if (recognition) {
+            recognition.continuous = false;
+            recognition.lang = 'en-IN';
+            recognition.interimResults = true;
+
+            talkBtn.addEventListener('click', () => {
+                recognition.start();
+            });
+            
+            stopBtn.addEventListener('click', () => {
+                recognition.stop();
+                speechSynthesis.cancel();
+                aiContainer.classList.remove('listening', 'speaking');
+                statusText.textContent = "Stopped. Click TALK to begin.";
+            });
+
+            recognition.onstart = () => {
+                aiContainer.classList.add('listening');
+                statusText.textContent = "Listening...";
+            };
+
+            recognition.onend = () => {
+                aiContainer.classList.remove('listening');
+                if(!aiContainer.classList.contains('speaking')) {
+                    statusText.textContent = "Click TALK to begin";
+                }
+            };
+
+            recognition.onresult = async (event) => {
+                const transcript = Array.from(event.results)
+                    .map(result => result[0])
+                    .map(result => result.transcript)
+                    .join('');
+
+                statusText.textContent = `You said: "${transcript}"`;
+
+                if (event.results[0].isFinal) {
+                    statusText.textContent = "Thinking...";
+                    const aiResponse = await sendToServer(transcript);
+                    speak(aiResponse);
+                }
+            };
+
+            recognition.onerror = (event) => {
+                console.error("Speech recognition error", event.error);
+                statusText.textContent = `Error: ${event.error}. Please try again.`;
+                aiContainer.classList.remove('listening');
+            };
+
+        } else {
+            statusText.textContent = "Speech Recognition not supported in this browser.";
+            talkBtn.style.display = 'none';
+            stopBtn.style.display = 'none';
+        }
+        
+    </script>
+</body>
+</html>
+
